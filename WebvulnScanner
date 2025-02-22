@@ -1,0 +1,101 @@
+from flask import Flask, render_template_string, request
+import requests
+from bs4 import BeautifulSoup
+
+app = Flask(__name__)
+
+class WebVulnerabilityScanner:
+    def __init__(self, url):
+        self.url = url
+
+    def check_sql_injection(self):
+        sql_payload = "' OR '1'='1"
+        target_url = self.url + f"?id={sql_payload}"
+        try:
+            response = requests.get(target_url, timeout=5)
+            if "SQL" in response.text or "error" in response.text:
+                return "Potential SQL Injection vulnerability found!"
+        except requests.exceptions.RequestException:
+            return "Error accessing the target URL."
+        return "No SQL Injection vulnerability detected."
+
+    def check_xss(self):
+        xss_payload = "<script>alert('XSS')</script>"
+        target_url = self.url + f"?input={xss_payload}"
+        try:
+            response = requests.get(target_url, timeout=5)
+            if xss_payload in response.text:
+                return "Potential XSS vulnerability found!"
+        except requests.exceptions.RequestException:
+            return "Error accessing the target URL."
+        return "No XSS vulnerability detected."
+
+    def check_weak_auth(self):
+        login_url = self.url + "/login"
+        data = {"username": "admin", "password": "admin"}
+        try:
+            response = requests.post(login_url, data=data, timeout=5)
+            if "Welcome" in response.text:
+                return "Weak authentication detected (Default admin/admin)!"
+        except requests.exceptions.RequestException:
+            return "Error accessing the login page."
+        return "No weak authentication vulnerability detected."
+
+    def run_all_scans(self):
+        return {
+            'SQL Injection': self.check_sql_injection(),
+            'XSS': self.check_xss(),
+            'Weak Authentication': self.check_weak_auth()
+        }
+
+@app.route('/')
+def index():
+    return render_template_string(html_template)
+
+@app.route('/scan', methods=['POST'])
+def scan():
+    target_url = request.form['url']
+    scanner = WebVulnerabilityScanner(target_url)
+    scan_results = scanner.run_all_scans()
+    return render_template_string(html_template, results=scan_results)
+
+html_template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Vulnerability Scanner</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        form { margin-bottom: 20px; }
+        input[type="text"] { width: 300px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        input[type="submit"] { padding: 10px 15px; background-color: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .results { margin-top: 20px; }
+        .results div { background-color: #fff; padding: 10px; border: 1px solid #ddd; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Basic Web Vulnerability Scanner</h1>
+    
+    <form action="/scan" method="POST">
+        <label for="url">Enter URL to Scan:</label><br>
+        <input type="text" id="url" name="url" placeholder="https://example.com" required><br><br>
+        <input type="submit" value="Start Scan">
+    </form>
+
+    {% if results %}
+        <div class="results">
+            <h2>Scan Results:</h2>
+            {% for vuln, result in results.items() %}
+                <div><strong>{{ vuln }}:</strong> {{ result }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</body>
+</html>
+"""
+
+if __name__ == '__main__':
+    app.run(debug=True)
